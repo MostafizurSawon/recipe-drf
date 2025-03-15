@@ -1,0 +1,65 @@
+# Setting Up a Stylish API View with Django REST Framework and Swagger
+
+## Step 1: Install Django REST framework and drf-yasg
+Ensure you have both Django REST framework and `drf-yasg` installed in your environment:
+```bash
+pip install djangorestframework drf-yasg
+
+
+Step 2:
+INSTALLED_APPS = [
+    ...
+    'rest_framework',
+    'drf_yasg',
+    ...
+]
+
+Step 3: 
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+
+Step 4:
+from django.contrib import admin
+from django.urls import path, include
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="API Documentation",
+        default_version='v1',
+        description="Your API description here",
+    ),
+    public=True,
+    permission_classes=(permissions.AllowAny,),
+)
+
+urlpatterns = [
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc-ui'),
+    path('admin/', admin.site.urls),
+    path('api/', include('your_app.urls')),  # Include your app's URLs
+]
+
+Step 5:
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from .serializers import UserRegistrationSerializer
+
+class UserRegistrationView(APIView):
+    @swagger_auto_schema(request_body=UserRegistrationSerializer)
+    def post(self, request):
+        serializer = UserRegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"status": "success", "message": "User Registration Successfully"},
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
