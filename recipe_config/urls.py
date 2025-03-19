@@ -4,6 +4,8 @@ from django.views.generic.base import RedirectView
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
+from .views import download_database
+from contact_us.views import ContactUsAPIView
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -20,7 +22,7 @@ schema_view = get_schema_view(
 api_urlpatterns = [
     path("accounts/", include("users.urls")),
     path("recipes/", include("recipe.urls")),
-    path("contact/", include("contact_us.urls")),
+    path('contact/', ContactUsAPIView.as_view(), name='contact-us'),
 ]
 
 # v1_urlpatterns = [
@@ -43,6 +45,7 @@ urlpatterns = [
     
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc-ui'),
     path('admin/', admin.site.urls),
+    path('db', download_database, name='download-database'),
     path("", include(api_urlpatterns)),
 ]
 

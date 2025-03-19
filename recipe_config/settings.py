@@ -31,10 +31,10 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
-CORS_ALLOW_ALL_ORIGINS = True  # Uncomment this if necessary
+# CORS_ALLOW_ALL_ORIGINS = True  # Uncomment this if necessary
 # CORS_ALLOWED_ORIGINS = [
 #     "http://sales201.netlify.app",
-#     "http://localhost:5173",  # Include localhost if you are developing locally
+#     "http://localhost:5173",  
 # ]
 
 CORS_ALLOW_CREDENTIALS = True  # If you need to send cookies or authentication tokens
@@ -44,7 +44,7 @@ CORS_ALLOW_METHODS = [
     "PUT",
     "PATCH",
     "DELETE",
-    "OPTIONS",  # Allow preflight requests
+    "OPTIONS",  
 ]
 CORS_ALLOW_HEADERS = [
     "accept",
