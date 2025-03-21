@@ -167,6 +167,7 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
+
 # Add this to MIDDLEWARE if not already present
 # INSTALLED_APPS += ["django_cleanup"]  # Optional: Cleans up unused images
 
