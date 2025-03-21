@@ -1,4 +1,4 @@
-# urls.py
+# recipe/urls.py
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path, include
@@ -8,7 +8,8 @@ from .views import (
     CategoryViewSet,
     ReviewViewSet,
     CommentViewSet,
-    ReactionViewSet
+    ReactionViewSet,
+    RecipesByUserView  # Add this import
 )
 
 router = DefaultRouter()
@@ -24,6 +25,7 @@ urlpatterns = [
     path('lists/<int:pk>/save/', RecipeViewSet.as_view({'post': 'save'}), name='recipe-save'),
     path('lists/<int:recipe_pk>/comments/', CommentViewSet.as_view({'get': 'list', 'post': 'create'}), name='recipe-comments'),
     path('lists/<int:recipe_pk>/comments/<int:pk>/', CommentViewSet.as_view({'delete': 'destroy'}), name='comment-destroy'),
+    path('by-user/<str:email>/', RecipesByUserView.as_view(), name='recipes_by_user'),  # Add this line
 ]
 
 if settings.DEBUG:

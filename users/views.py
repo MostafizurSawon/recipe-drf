@@ -1,4 +1,6 @@
+# users/views.py
 import random
+import logging
 from django.contrib.auth import authenticate, get_user_model
 from django.core.mail import send_mail
 from rest_framework import permissions
@@ -8,7 +10,14 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from .serializers import UserRegistrationSerializer, UserProfileSerializer
+from .serializers import (
+    UserRegistrationSerializer, UserProfileSerializer, UserFullSerializer,
+    RoleChangeRequestSerializer  
+)
+from .permissions import role_based_permission
+from .models import RoleChangeRequest
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -17,13 +26,14 @@ class UserRegistrationView(APIView):
     def post(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            user = serializer.save()
+            logger.info(f"User registered with email {user.email} and role {user.role}")
             return Response(
                 {"status": "success", "message": "User Registration Successfully"},
                 status=status.HTTP_201_CREATED,
             )
         else:
-            print(serializer.errors)
+            logger.error(f"User registration failed: {serializer.errors}")
             return Response(
                 {"status": "Error", "message": "User Registration failed!"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -156,34 +166,176 @@ class ResetPasswordView(APIView):
         )
 
 class UserProfileView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = [permissions.IsAuthenticated]
 
+    @swagger_auto_schema(
+        operation_description="Retrieve the authenticated user's profile.",
+        responses={
+            200: openapi.Response('User profile', UserFullSerializer),
+            401: 'Unauthorized',
+        }
+    )
     def get(self, request):
         user = request.user
-        user_data = UserProfileSerializer(user).data
+        serializer = UserFullSerializer(user)
         return Response(
             {
                 "status": "success",
                 "message": "Request Successful",
-                "data": user_data,
+                "data": serializer.data,
             },
             status=status.HTTP_200_OK,
         )
 
 class UserProfileUpdateView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = [permissions.IsAuthenticated]
 
-    @swagger_auto_schema(request_body=UserProfileSerializer)
-    def post(self, request):
+    @swagger_auto_schema(
+        operation_description="Update the authenticated user's profile.",
+        request_body=UserFullSerializer,
+        responses={
+            200: openapi.Response('Updated user profile', UserFullSerializer),
+            400: 'Bad Request',
+            401: 'Unauthorized',
+        }
+    )
+    def put(self, request):
         user = request.user
-        serializer = UserProfileSerializer(user, data=request.data, partial=True)
+
+        # Handle both JSON and FormData
+        if "multipart/form-data" in request.headers.get("Content-Type", "").lower():
+            # Parse FormData into a nested dictionary
+            data = {}
+            profile_data = {}
+            for key, value in request.data.items():
+                if key.startswith("profile."):
+                    profile_field = key.split("profile.")[1]
+                    profile_data[profile_field] = value
+                else:
+                    data[key] = value
+            if profile_data:
+                data["profile"] = profile_data
+        else:
+            # JSON data, use as-is
+            data = request.data
+
+        # Debug: Log the parsed data
+        logger.debug(f"Data to update: {data}")
+
+        serializer = UserFullSerializer(user, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            logger.info(f"User profile updated for {user.email}")
             return Response(
-                {"status": "success", "message": "Request Successful"},
+                {
+                    "status": "success",
+                    "message": "Profile Updated Successfully",
+                    "data": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        logger.error(f"Profile update failed for {user.email}: {serializer.errors}")
+        return Response(
+            {
+                "status": "failed",
+                "message": "Profile Update Failed",
+                "errors": serializer.errors,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+class AllUsersView(APIView):
+    permission_classes = [permissions.IsAuthenticated, role_based_permission(allowed_roles=['Admin'])]
+
+    def get(self, request):
+        users = User.objects.all()
+        serializer = UserFullSerializer(users, many=True)
+        return Response(
+            {
+                "status": "success",
+                "message": "Request Successful",
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+class SpecificUserProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]  # Removed admin restriction
+
+    def get(self, request, email):
+        try:
+            user = User.objects.get(email=email)
+            serializer = UserFullSerializer(user)
+            return Response(
+                {
+                    "status": "success",
+                    "message": "Request Successful",
+                    "data": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"status": "failed", "message": "User not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+class ValidatePasswordView(APIView):
+    @swagger_auto_schema(request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'email': openapi.Schema(type=openapi.TYPE_STRING, description='Email'),
+            'password': openapi.Schema(type=openapi.TYPE_STRING, description='Password'),
+        }
+    ))
+    def post(self, request):
+        email = request.data.get("email")
+        password = request.data.get("password")
+
+        if not email or not password:
+            return Response(
+                {"status": "failed", "message": "Email and password are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = authenticate(request, email=email, password=password)
+
+        if user:
+            return Response(
+                {"status": "valid", "message": "Credentials are valid"},
                 status=status.HTTP_200_OK,
             )
 
+        return Response(
+            {"status": "invalid", "message": "Invalid credentials"},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
+class RoleChangeRequestView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    @swagger_auto_schema(request_body=RoleChangeRequestSerializer)
+    def post(self, request):
+        user = request.user
+        # Check if the user already has a pending request
+        if RoleChangeRequest.objects.filter(user=user, status='Pending').exists():
+            return Response(
+                {"status": "failed", "message": "You already have a pending role change request."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = RoleChangeRequestSerializer(data=request.data)
+        if serializer.is_valid():
+            RoleChangeRequest.objects.create(
+                user=user,
+                requested_role=serializer.validated_data['requested_role'],
+                reason=serializer.validated_data.get('reason', '')
+            )
+            logger.info(f"Role change request submitted by {user.email} for role {serializer.validated_data['requested_role']}")
+            return Response(
+                {"status": "success", "message": "Role change request submitted successfully"},
+                status=status.HTTP_201_CREATED,
+            )
         return Response(
             {"status": "failed", "message": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,

@@ -15,6 +15,7 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("role", "Admin")
 
         if extra_fields.get("is_staff") is not True:
             raise ValueError("Superuser must have is_staff=True.")
@@ -24,6 +25,12 @@ class UserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 class User(AbstractBaseUser, PermissionsMixin):
+    ROLE_CHOICES = (
+        ('Admin', 'Admin'),
+        ('Chef', 'Chef'),
+        ('User', 'User'),
+    )
+
     id = models.AutoField(primary_key=True)
     email = models.EmailField(unique=True)
     firstName = models.CharField(max_length=255)
@@ -32,6 +39,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     otp = models.CharField(max_length=4, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='User')
     
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -65,3 +73,24 @@ class UserProfile(models.Model):
     class Meta:
         verbose_name = "User Profile"
         verbose_name_plural = "User Profiles"
+
+class RoleChangeRequest(models.Model):
+    STATUS_CHOICES = (
+        ('Pending', 'Pending'),
+        ('Approved', 'Approved'),
+        ('Denied', 'Denied'),
+    )
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='role_change_requests')
+    requested_role = models.CharField(max_length=10, choices=User.ROLE_CHOICES)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    reason = models.TextField(blank=True, help_text="Reason for requesting this role")
+
+    def __str__(self):
+        return f"{self.user.email} - Request to be {self.requested_role} ({self.status})"
+
+    class Meta:
+        verbose_name = "Role Change Request"
+        verbose_name_plural = "Role Change Requests"

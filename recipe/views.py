@@ -1,6 +1,7 @@
-# views.py
+# recipe/views.py
 from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets, status
+from rest_framework.views import APIView
 from rest_framework import filters, pagination
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.decorators import action
@@ -10,6 +11,8 @@ from django.db.models import Q, Count, OuterRef, Subquery
 import logging
 from . import models
 from . import serializers
+from users.permissions import role_based_permission  # Update the import
+from users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.CategorySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), role_based_permission(allowed_roles=['Admin'])]
+        return [IsAuthenticatedOrReadOnly()]
+
 class RecipeViewSet(viewsets.ModelViewSet):
     queryset = models.Recipe.objects.all()
     serializer_class = serializers.RecipeSerializer
@@ -53,6 +61,13 @@ class RecipeViewSet(viewsets.ModelViewSet):
     pagination_class = RecipePagination
     filterset_class = RecipeFilter
     permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), role_based_permission(allowed_roles=['Chef', 'Admin'])]
+        elif self.action in ['like', 'save']:
+            return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
+        return [IsAuthenticatedOrReadOnly()]
 
     def perform_create(self, serializer):
         logger.info(f"Creating recipe for user: {self.request.user}")
@@ -75,7 +90,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(recipes, many=True, context={'request': request})
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['post'])
     def like(self, request, pk=None):
         recipe = self.get_object()
         user = request.user
@@ -91,7 +106,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
             logger.info(f"User {user} liked recipe {recipe.id}")
             return Response({'status': 'recipe liked'})
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['post'])
     def save(self, request, pk=None):
         recipe = self.get_object()
         user = request.user
@@ -109,17 +124,48 @@ class ReviewViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.ReviewSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
+        elif self.action in ['update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), role_based_permission(allowed_roles=['Admin'])]
+        return [IsAuthenticatedOrReadOnly()]
+
     def perform_create(self, serializer):
         logger.info(f"Creating review for user: {self.request.user}")
         serializer.save(reviewer=self.request.user)
 
-# views.py (relevant part)
+    def update(self, request, *args, **kwargs):
+        review = self.get_object()
+        if review.reviewer != request.user and request.user.role != 'Admin':
+            return Response(
+                {"detail": "You do not have permission to update this review."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        review = self.get_object()
+        if review.reviewer != request.user and request.user.role != 'Admin':
+            return Response(
+                {"detail": "You do not have permission to delete this review."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().destroy(request, *args, **kwargs)
+
 class CommentViewSet(viewsets.ModelViewSet):
     queryset = models.Comment.objects.all()
     serializer_class = serializers.CommentSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['recipe']
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
+        elif self.action == 'destroy':
+            return [IsAuthenticated()]
+        return [IsAuthenticatedOrReadOnly()]
 
     def get_queryset(self):
         recipe_pk = self.kwargs.get('recipe_pk')
@@ -153,6 +199,55 @@ class ReactionViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['recipe', 'comment']
 
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
+        elif self.action in ['update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), role_based_permission(allowed_roles=['Admin'])]
+        return [IsAuthenticatedOrReadOnly()]
+
     def perform_create(self, serializer):
         logger.info(f"Creating reaction for user: {self.request.user}")
         serializer.save(user=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        reaction = self.get_object()
+        if reaction.user != request.user and request.user.role != 'Admin':
+            return Response(
+                {"detail": "You do not have permission to update this reaction."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        reaction = self.get_object()
+        if reaction.user != request.user and request.user.role != 'Admin':
+            return Response(
+                {"detail": "You do not have permission to delete this reaction."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().destroy(request, *args, **kwargs)
+
+class RecipesByUserView(APIView):
+    permission_classes = [IsAuthenticated, role_based_permission(allowed_roles=['Admin'])]
+    pagination_class = RecipePagination
+
+    def get(self, request, email):
+        try:
+            user = User.objects.get(email=email)
+            recipes = models.Recipe.objects.filter(user=user)
+            
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(recipes, request)
+            serializer = serializers.RecipeSerializer(page, many=True, context={'request': request})
+            
+            return paginator.get_paginated_response({
+                "status": "success",
+                "message": "Request Successful",
+                "data": serializer.data,
+            })
+        except User.DoesNotExist:
+            return Response(
+                {"status": "failed", "message": "User not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )

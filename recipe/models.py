@@ -96,8 +96,10 @@ class Review(models.Model):
         return f"User: {self.reviewer.firstName} ; Recipe: {self.recipe.title}"
 
 class Comment(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name='comments')  # Add related_name='comments'
+    user = models.ForeignKey('users.User', on_delete=models.CASCADE)
+    recipe = models.ForeignKey('Recipe', on_delete=models.CASCADE)
+    # user = models.ForeignKey(User, on_delete=models.CASCADE)
+    # recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name='comments')  # Add related_name='comments'
     content = models.TextField()
     created = models.DateTimeField(auto_now_add=True)
 
@@ -113,9 +115,13 @@ class Comment(models.Model):
             'LOVE': reactions.filter(reaction_type='LOVE').count(),
         }
         
-    def can_delete(self, requesting_user):
-        """Check if the requesting user can delete this comment."""
-        is_owner = self.recipe.user == requesting_user
-        is_commenter = self.user == requesting_user
-        is_staff = requesting_user.is_staff or requesting_user.is_superuser
-        return (is_owner and not is_staff) or is_commenter or is_staff
+    # def can_delete(self, requesting_user):
+    #     """Check if the requesting user can delete this comment."""
+    #     is_owner = self.recipe.user == requesting_user
+    #     is_commenter = self.user == requesting_user
+    #     is_staff = requesting_user.is_staff or requesting_user.is_superuser
+    #     return (is_owner and not is_staff) or is_commenter or is_staff
+    
+    def can_delete(self, user):
+        # Allow deletion if the user is the creator or an Admin
+        return user == self.user or user.role == 'Admin'
