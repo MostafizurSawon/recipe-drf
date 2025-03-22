@@ -1,8 +1,6 @@
-# models.py
 from django.db import models
 from django.core.exceptions import ValidationError
 from users.models import User
-from users.models import UserProfile
 
 class Category(models.Model):
     name = models.CharField(max_length=30)

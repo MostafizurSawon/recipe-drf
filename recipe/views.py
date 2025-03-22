@@ -1,4 +1,3 @@
-# recipe/views.py
 from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
@@ -6,13 +5,15 @@ from rest_framework import filters, pagination
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.serializers import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet, CharFilter
 from django.db.models import Q, Count, OuterRef, Subquery
 import logging
 from . import models
 from . import serializers
-from users.permissions import role_based_permission  # Update the import
-from users.models import User
+# from users.permissions import role_based_permission  
+from .permissions import role_based_permission
+from users.models import User, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -63,15 +64,21 @@ class RecipeViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [IsAuthenticated(), role_based_permission(allowed_roles=['Chef', 'Admin'])]
-        elif self.action in ['like', 'save']:
-            return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'like', 'save']:
+            return [IsAuthenticated()]  # Any authenticated user can perform these actions
         return [IsAuthenticatedOrReadOnly()]
 
     def perform_create(self, serializer):
-        logger.info(f"Creating recipe for user: {self.request.user}")
-        serializer.save(user=self.request.user)
+        if not self.request.user.is_authenticated:
+            logger.error("Unauthenticated user attempted to create a recipe")
+            raise ValidationError("User must be authenticated to create a recipe")
+        logger.info(f"Creating recipe for user: {self.request.user.email}")
+        try:
+            recipe = serializer.save(user=self.request.user)  # Save with User directly
+            logger.info(f"Recipe {recipe.id} created successfully for user {self.request.user.email}")
+        except Exception as e:
+            logger.error(f"Error creating recipe: {str(e)}")
+            raise
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()

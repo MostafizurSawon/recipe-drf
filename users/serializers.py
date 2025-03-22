@@ -1,11 +1,21 @@
-# users/serializers.py
+import logging
 from rest_framework import serializers
 from .models import User, UserProfile, RoleChangeRequest
 
+# Define logger
+logger = logging.getLogger(__name__)
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["email", "firstName", "lastName", "role"]
+
 class UserProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
     class Meta:
         model = UserProfile
-        fields = ["image", "age", "portfolio", "sex", "bio", "facebook"]
+        fields = ["image", "age", "portfolio", "sex", "bio", "facebook", "user"]
         extra_kwargs = {
             "image": {"required": False},
             "portfolio": {"required": False},
@@ -36,7 +46,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user = User(**validated_data)
         user.set_password(password)
         user.save()
-        UserProfile.objects.create(user=user)
+        logger.info(f"User {user.email} saved successfully")
         return user
 
 class UserFullSerializer(serializers.ModelSerializer):
@@ -57,7 +67,7 @@ class UserFullSerializer(serializers.ModelSerializer):
         # Ensure the user has a UserProfile instance
         try:
             profile = instance.profile
-        except User.profile.RelatedObjectDoesNotExist:  # Corrected exception
+        except User.profile.RelatedObjectDoesNotExist:
             profile = UserProfile.objects.create(user=instance)
 
         # Update User fields

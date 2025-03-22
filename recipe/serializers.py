@@ -1,13 +1,13 @@
 from rest_framework import serializers
 from . import models
 from users.serializers import UserProfileSerializer
+from users.serializers import UserFullSerializer
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Category
-        fields = '__all__'
+        fields = ['id', 'name', 'slug']
 
-# serializers.py (relevant part)
 class CommentSerializer(serializers.ModelSerializer):
     user = UserProfileSerializer(read_only=True)
     recipe = serializers.PrimaryKeyRelatedField(read_only=True)
@@ -42,7 +42,7 @@ class CommentSerializer(serializers.ModelSerializer):
         return obj.can_delete(user)
 
 class RecipeSerializer(serializers.ModelSerializer):
-    user = UserProfileSerializer(read_only=True)
+    user = UserFullSerializer(read_only=True)  # Changed to UserFullSerializer
     category = serializers.PrimaryKeyRelatedField(
         queryset=models.Category.objects.all(),
         many=True,
@@ -58,6 +58,7 @@ class RecipeSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True
     )
+    saved_by = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     reaction_counts = serializers.SerializerMethodField()
     is_liked_by_user = serializers.SerializerMethodField()
     is_saved_by_user = serializers.SerializerMethodField()
@@ -67,10 +68,13 @@ class RecipeSerializer(serializers.ModelSerializer):
         model = models.Recipe
         fields = [
             'id', 'title', 'ingredients', 'category', 'category_ids', 'category_names', 'user',
-            'img', 'instructions', 'created_on', 'reaction_counts', 'is_liked_by_user',
+            'img', 'instructions', 'created_on', 'saved_by', 'reaction_counts', 'is_liked_by_user',
             'is_saved_by_user', 'comments'
         ]
-        read_only_fields = ['user', 'created_on', 'reaction_counts', 'is_liked_by_user', 'is_saved_by_user', 'comments']
+        read_only_fields = [
+            'user', 'created_on', 'saved_by', 'reaction_counts', 'is_liked_by_user',
+            'is_saved_by_user', 'comments'
+        ]
 
     def get_reaction_counts(self, obj):
         return obj.get_reaction_counts()

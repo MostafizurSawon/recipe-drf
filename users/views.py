@@ -1,4 +1,3 @@
-# users/views.py
 import random
 import logging
 from django.contrib.auth import authenticate, get_user_model
@@ -17,6 +16,7 @@ from .serializers import (
 from .permissions import role_based_permission
 from .models import RoleChangeRequest
 
+# Ensure logger is defined
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
