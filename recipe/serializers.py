@@ -1,108 +1,97 @@
 from rest_framework import serializers
-from . import models
-from users.serializers import UserProfileSerializer
-from users.serializers import UserFullSerializer
+from .models import Recipe, Comment, Category, Reaction, Review
+from users.models import User
 
-class CategorySerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = models.Category
-        fields = ['id', 'name', 'slug']
+        model = User
+        fields = ['id', 'email', 'firstName', 'lastName', 'role']
 
 class CommentSerializer(serializers.ModelSerializer):
-    user = UserProfileSerializer(read_only=True)
-    recipe = serializers.PrimaryKeyRelatedField(read_only=True)
-    reaction_counts = serializers.SerializerMethodField()
-    user_reaction = serializers.SerializerMethodField()
+    user = UserSerializer(read_only=True)
     can_delete = serializers.SerializerMethodField()
 
     class Meta:
-        model = models.Comment
-        fields = ['id', 'user', 'recipe', 'content', 'created', 'reaction_counts', 'user_reaction', 'can_delete']
-        read_only_fields = ['user', 'recipe', 'created', 'reaction_counts', 'user_reaction', 'can_delete']
+        model = Comment
+        fields = ['id', 'recipe', 'user', 'content', 'created', 'can_delete']
+        read_only_fields = ['recipe', 'user', 'created', 'can_delete']
 
-    def validate_content(self, value):
-        if not value or not value.strip():
-            raise serializers.ValidationError("Content cannot be empty or whitespace.")
+    def get_can_delete(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.can_delete(request.user)
+        return False
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'slug']
+
+class ReactionSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Reaction
+        fields = ['id', 'user', 'recipe', 'comment', 'reaction_type']
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    reviewer = UserSerializer(read_only=True)
+    rating_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Review
+        fields = ['id', 'reviewer', 'recipe', 'body', 'created', 'rating', 'rating_display']
+
+    def get_rating_display(self, obj):
+        return obj.get_star_display()
+
+    def validate_rating(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError("Rating must be between 1 and 5.")
         return value
+
+class RecipeSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    comments = CommentSerializer(many=True, read_only=True)
+    category_ids = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Category.objects.all(), source='category', write_only=True
+    )
+    category_names = serializers.SlugRelatedField(
+        many=True, read_only=True, source='category', slug_field='name'
+    )
+    reaction_counts = serializers.SerializerMethodField()
+    user_reaction = serializers.SerializerMethodField()
+    is_liked_by_user = serializers.SerializerMethodField()
+    is_saved_by_user = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Recipe
+        fields = [
+            'id', 'title', 'ingredients', 'instructions', 'created_on', 'category',
+            'category_ids', 'category_names', 'img', 'user', 'comments',
+            'reaction_counts', 'user_reaction', 'is_liked_by_user', 'is_saved_by_user'
+        ]
+        read_only_fields = ['user', 'comments', 'created_on', 'category', 'category_names', 'reaction_counts', 'is_liked_by_user', 'is_saved_by_user']
 
     def get_reaction_counts(self, obj):
         return obj.get_reaction_counts()
 
     def get_user_reaction(self, obj):
-        user = self.context['request'].user
-        if user.is_authenticated:
-            reaction = models.Reaction.objects.filter(comment=obj, user=user).first()
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            reaction = Reaction.objects.filter(user=request.user, recipe=obj).first()
             return reaction.reaction_type if reaction else None
         return None
 
-    def get_can_delete(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            return False
-        return obj.can_delete(user)
-
-class RecipeSerializer(serializers.ModelSerializer):
-    user = UserFullSerializer(read_only=True)  # Changed to UserFullSerializer
-    category = serializers.PrimaryKeyRelatedField(
-        queryset=models.Category.objects.all(),
-        many=True,
-        write_only=True
-    )
-    category_ids = serializers.PrimaryKeyRelatedField(
-        source='category',
-        many=True,
-        read_only=True
-    )
-    category_names = serializers.StringRelatedField(
-        source='category',
-        many=True,
-        read_only=True
-    )
-    saved_by = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
-    reaction_counts = serializers.SerializerMethodField()
-    is_liked_by_user = serializers.SerializerMethodField()
-    is_saved_by_user = serializers.SerializerMethodField()
-    comments = CommentSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = models.Recipe
-        fields = [
-            'id', 'title', 'ingredients', 'category', 'category_ids', 'category_names', 'user',
-            'img', 'instructions', 'created_on', 'saved_by', 'reaction_counts', 'is_liked_by_user',
-            'is_saved_by_user', 'comments'
-        ]
-        read_only_fields = [
-            'user', 'created_on', 'saved_by', 'reaction_counts', 'is_liked_by_user',
-            'is_saved_by_user', 'comments'
-        ]
-
-    def get_reaction_counts(self, obj):
-        return obj.get_reaction_counts()
-
     def get_is_liked_by_user(self, obj):
-        user = self.context['request'].user
-        if user.is_authenticated:
-            return models.Reaction.objects.filter(recipe=obj, user=user, reaction_type='LIKE').exists()
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Reaction.objects.filter(user=request.user, recipe=obj, reaction_type='LIKE').exists()
         return False
 
     def get_is_saved_by_user(self, obj):
-        user = self.context['request'].user
-        if user.is_authenticated:
-            return user in obj.saved_by.all()
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.saved_by.filter(id=request.user.id).exists()
         return False
-
-class ReviewSerializer(serializers.ModelSerializer):
-    reviewer = UserProfileSerializer(read_only=True)
-
-    class Meta:
-        model = models.Review
-        fields = ['id', 'reviewer', 'recipe', 'body', 'created', 'rating']
-        read_only_fields = ['reviewer', 'created']
-
-class ReactionSerializer(serializers.ModelSerializer):
-    user = UserProfileSerializer(read_only=True)
-
-    class Meta:
-        model = models.Reaction
-        fields = ['id', 'user', 'recipe', 'comment', 'reaction_type']
-        read_only_fields = ['user']

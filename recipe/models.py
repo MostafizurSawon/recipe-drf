@@ -64,40 +64,33 @@ class Reaction(models.Model):
         target = self.recipe or self.comment
         return f"{self.user.firstName}'s {self.reaction_type} on {target}"
 
-STAR_CHOICES = [
-    ('⭐', '⭐'),
-    ('⭐⭐', '⭐⭐'),
-    ('⭐⭐⭐', '⭐⭐⭐'),
-    ('⭐⭐⭐⭐', '⭐⭐⭐⭐'),
-    ('⭐⭐⭐⭐⭐', '⭐⭐⭐⭐⭐'),
-]
-
 class Review(models.Model):
     reviewer = models.ForeignKey(User, on_delete=models.CASCADE)
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
-    body = models.TextField()
+    body = models.TextField(blank=True)  # Already optional
     created = models.DateTimeField(auto_now_add=True)
-    rating = models.CharField(choices=STAR_CHOICES, max_length=10)
+    rating = models.IntegerField(choices=[(i, str(i)) for i in range(1, 6)])  # 1 to 5
 
     class Meta:
         unique_together = ('reviewer', 'recipe')
 
     def clean(self):
-        if Review.objects.filter(reviewer=self.reviewer, recipe=self.recipe).exists():
-            raise ValidationError("You have already reviewed this recipe.")
+        # Skip the duplicate check since it's handled in the view
+        pass
 
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
+
+    def get_star_display(self):
+        return '⭐' * self.rating
 
     def __str__(self):
         return f"User: {self.reviewer.firstName} ; Recipe: {self.recipe.title}"
 
 class Comment(models.Model):
     user = models.ForeignKey('users.User', on_delete=models.CASCADE)
-    recipe = models.ForeignKey('Recipe', on_delete=models.CASCADE)
-    # user = models.ForeignKey(User, on_delete=models.CASCADE)
-    # recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, related_name='comments')  # Add related_name='comments'
+    recipe = models.ForeignKey('Recipe', on_delete=models.CASCADE, related_name='comments')
     content = models.TextField()
     created = models.DateTimeField(auto_now_add=True)
 
@@ -112,14 +105,6 @@ class Comment(models.Model):
             'SAD': reactions.filter(reaction_type='SAD').count(),
             'LOVE': reactions.filter(reaction_type='LOVE').count(),
         }
-        
-    # def can_delete(self, requesting_user):
-    #     """Check if the requesting user can delete this comment."""
-    #     is_owner = self.recipe.user == requesting_user
-    #     is_commenter = self.user == requesting_user
-    #     is_staff = requesting_user.is_staff or requesting_user.is_superuser
-    #     return (is_owner and not is_staff) or is_commenter or is_staff
-    
+
     def can_delete(self, user):
-        # Allow deletion if the user is the creator or an Admin
         return user == self.user or user.role == 'Admin'

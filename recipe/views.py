@@ -7,11 +7,11 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.serializers import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend, FilterSet, CharFilter
+from django.db import transaction
 from django.db.models import Q, Count, OuterRef, Subquery
 import logging
 from . import models
 from . import serializers
-# from users.permissions import role_based_permission  
 from .permissions import role_based_permission
 from users.models import User, UserProfile
 
@@ -56,7 +56,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return [IsAuthenticatedOrReadOnly()]
 
 class RecipeViewSet(viewsets.ModelViewSet):
-    queryset = models.Recipe.objects.all()
+    queryset = models.Recipe.objects.all().prefetch_related('comments')
     serializer_class = serializers.RecipeSerializer
     filter_backends = [DjangoFilterBackend]
     pagination_class = RecipePagination
@@ -65,8 +65,27 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy', 'like', 'save']:
-            return [IsAuthenticated()]  # Any authenticated user can perform these actions
+            return [IsAuthenticated()]
         return [IsAuthenticatedOrReadOnly()]
+
+    def list(self, request, *args, **kwargs):
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            logger.info(f"Queryset for list: {list(queryset)}")
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True, context={'request': request})
+                return self.get_paginated_response(serializer.data)
+            serializer = self.get_serializer(queryset, many=True, context={'request': request})
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error in RecipeViewSet list: {str(e)}", exc_info=True)
+            return Response({"detail": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def create(self, request, *args, **kwargs):
+        logger.info(f"Create request data: {request.data}")
+        logger.info(f"Authenticated user: {request.user if request.user.is_authenticated else 'Anonymous'}")
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         if not self.request.user.is_authenticated:
@@ -74,7 +93,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
             raise ValidationError("User must be authenticated to create a recipe")
         logger.info(f"Creating recipe for user: {self.request.user.email}")
         try:
-            recipe = serializer.save(user=self.request.user)  # Save with User directly
+            recipe = serializer.save(user=self.request.user)
             logger.info(f"Recipe {recipe.id} created successfully for user {self.request.user.email}")
         except Exception as e:
             logger.error(f"Error creating recipe: {str(e)}")
@@ -83,7 +102,20 @@ class RecipeViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance, context={'request': request})
+        logger.info(f"Retrieved recipe {instance.id} with comments: {list(instance.comments.all())}")
         return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        recipe = self.get_object()
+        user = request.user
+        if recipe.user != user and user.role != 'Admin':
+            return Response(
+                {"detail": "You do not have permission to delete this recipe."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        self.perform_destroy(recipe)
+        logger.info(f"User {user.email} deleted recipe {recipe.id}")
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticatedOrReadOnly])
     def most_liked(self, request):
@@ -101,17 +133,30 @@ class RecipeViewSet(viewsets.ModelViewSet):
     def like(self, request, pk=None):
         recipe = self.get_object()
         user = request.user
+        reaction_type = request.data.get('reaction_type', 'LIKE')
+
+        if reaction_type not in ['LIKE', 'LOVE', 'WOW', 'SAD']:
+            return Response(
+                {"detail": "Invalid reaction type. Must be one of: LIKE, LOVE, WOW, SAD."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         reaction = models.Reaction.objects.filter(user=user, recipe=recipe).first()
-        if reaction and reaction.reaction_type == 'LIKE':
-            reaction.delete()
-            logger.info(f"User {user} unliked recipe {recipe.id}")
-            return Response({'status': 'recipe unliked'})
-        else:
-            if reaction:
+
+        if reaction:
+            if reaction.reaction_type == reaction_type:
                 reaction.delete()
-            models.Reaction.objects.create(user=user, recipe=recipe, reaction_type='LIKE')
-            logger.info(f"User {user} liked recipe {recipe.id}")
-            return Response({'status': 'recipe liked'})
+                logger.info(f"User {user.email} removed {reaction_type} reaction from recipe {recipe.id}")
+                return Response({'status': 'reaction removed'})
+            else:
+                reaction.reaction_type = reaction_type
+                reaction.save()
+                logger.info(f"User {user.email} changed reaction to {reaction_type} for recipe {recipe.id}")
+                return Response({'status': f'reaction updated to {reaction_type}'})
+        else:
+            models.Reaction.objects.create(user=user, recipe=recipe, reaction_type=reaction_type)
+            logger.info(f"User {user.email} added {reaction_type} reaction to recipe {recipe.id}")
+            return Response({'status': f'reaction added: {reaction_type}'})
 
     @action(detail=True, methods=['post'])
     def save(self, request, pk=None):
@@ -130,17 +175,24 @@ class ReviewViewSet(viewsets.ModelViewSet):
     queryset = models.Review.objects.all()
     serializer_class = serializers.ReviewSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['recipe']
 
     def get_permissions(self):
         if self.action == 'create':
             return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
         elif self.action in ['update', 'partial_update', 'destroy']:
-            return [IsAuthenticated(), role_based_permission(allowed_roles=['Admin'])]
+            return [IsAuthenticated()]
         return [IsAuthenticatedOrReadOnly()]
 
     def perform_create(self, serializer):
+        recipe_id = self.request.data.get('recipe')
+        recipe = get_object_or_404(models.Recipe, id=recipe_id)
+        existing_review = models.Review.objects.filter(reviewer=self.request.user, recipe=recipe).first()
+        if existing_review:
+            raise ValidationError("You have already reviewed this recipe. You can edit your existing review.")
         logger.info(f"Creating review for user: {self.request.user}")
-        serializer.save(reviewer=self.request.user)
+        serializer.save(reviewer=self.request.user, recipe=recipe)
 
     def update(self, request, *args, **kwargs):
         review = self.get_object()
@@ -180,13 +232,15 @@ class CommentViewSet(viewsets.ModelViewSet):
             return self.queryset.filter(recipe_id=recipe_pk)
         return self.queryset
 
+    @transaction.atomic
     def perform_create(self, serializer):
         recipe_pk = self.kwargs.get('recipe_pk')
         logger.info(f"Creating comment for recipe {recipe_pk}, request data: {self.request.data}")
         if not recipe_pk:
             raise serializers.ValidationError("Recipe ID is required and must be provided in the URL.")
         recipe = get_object_or_404(models.Recipe, id=recipe_pk)
-        serializer.save(user=self.request.user, recipe=recipe)
+        comment = serializer.save(user=self.request.user, recipe=recipe)
+        logger.info(f"Comment created: {comment.id} for recipe {recipe.id}")
 
     def destroy(self, request, *args, **kwargs):
         comment = self.get_object()
