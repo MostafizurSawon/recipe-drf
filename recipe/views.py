@@ -22,14 +22,17 @@ class RecipeFilter(FilterSet):
     search = CharFilter(method='filter_search')
 
     def filter_categories(self, queryset, name, value):
-        logger.info(f"Filtering recipes by categories: {value}")
+        logger.info(f"Filtering recipes by category IDs: {value}")
         if not value:
             return queryset
-        category_names = [cat.strip() for cat in value.split(',')]
-        query = Q()
-        for cat_name in category_names:
-            query |= Q(category__name__iexact=cat_name)
-        return queryset.filter(query).distinct()
+        try:
+            category_ids = [int(cat_id.strip()) for cat_id in value.split(',') if cat_id.strip().isdigit()]
+            if not category_ids:
+                return queryset
+            return queryset.filter(category__id__in=category_ids).distinct()
+        except ValueError as e:
+            logger.error(f"Invalid category IDs provided: {value}, error: {str(e)}")
+            return queryset
 
     def filter_search(self, queryset, name, value):
         logger.info(f"Searching recipes with query: {value}")
@@ -68,6 +71,13 @@ class RecipeViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAuthenticatedOrReadOnly()]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Filter by the authenticated user if 'my_recipes' query parameter is present
+        if self.request.query_params.get('my_recipes') == 'true' and self.request.user.is_authenticated:
+            queryset = queryset.filter(user=self.request.user)
+        return queryset
+
     def list(self, request, *args, **kwargs):
         try:
             queryset = self.filter_queryset(self.get_queryset())
@@ -104,6 +114,26 @@ class RecipeViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance, context={'request': request})
         logger.info(f"Retrieved recipe {instance.id} with comments: {list(instance.comments.all())}")
         return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        recipe = self.get_object()
+        user = request.user
+        if recipe.user != user and user.role != 'Admin':
+            return Response(
+                {"detail": "You do not have permission to update this recipe."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        recipe = self.get_object()
+        user = request.user
+        if recipe.user != user and user.role != 'Admin':
+            return Response(
+                {"detail": "You do not have permission to update this recipe."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         recipe = self.get_object()
