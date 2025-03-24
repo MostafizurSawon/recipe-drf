@@ -43,6 +43,7 @@ class Reaction(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE, null=True, blank=True)
     comment = models.ForeignKey('Comment', on_delete=models.CASCADE, null=True, blank=True)
     reaction_type = models.CharField(max_length=4, choices=REACTION_CHOICES)
+    created_on = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     class Meta:
         unique_together = [

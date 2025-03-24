@@ -33,7 +33,7 @@ class ReactionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Reaction
-        fields = ['id', 'user', 'recipe', 'comment', 'reaction_type']
+        fields = ['id', 'user', 'recipe', 'comment', 'reaction_type', 'created_on']
 
 class ReviewSerializer(serializers.ModelSerializer):
     reviewer = UserSerializer(read_only=True)

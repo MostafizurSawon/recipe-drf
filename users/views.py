@@ -11,10 +11,11 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, UserFullSerializer,
-    RoleChangeRequestSerializer  
+    RoleChangeRequestSerializer , RoleUpdateSerializer 
 )
 from .permissions import role_based_permission
-from .models import RoleChangeRequest
+from .models import RoleChangeRequest 
+from .permissions import role_based_permission
 
 # Ensure logger is defined
 logger = logging.getLogger(__name__)
@@ -339,4 +340,39 @@ class RoleChangeRequestView(APIView):
         return Response(
             {"status": "failed", "message": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
+        )
+        
+class UpdateUserRoleView(APIView):
+    permission_classes = [permissions.IsAuthenticated, role_based_permission(allowed_roles=['Admin'])]
+
+    def put(self, request, email):
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            logger.warning(f"User with email {email} not found for role update")
+            return Response(
+                {"status": "failed", "message": "User not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = RoleUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"status": "failed", "message": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        new_role = serializer.validated_data["role"]
+        if user.role == new_role:
+            return Response(
+                {"status": "failed", "message": f"User is already a {new_role}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.role = new_role
+        user.save()
+        logger.info(f"User {user.email} role updated to {new_role} by admin {request.user.email}")
+        return Response(
+            {"status": "success", "message": f"User role updated to {new_role} successfully"},
+            status=status.HTTP_200_OK,
         )

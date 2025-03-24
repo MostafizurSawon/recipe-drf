@@ -4,8 +4,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class RoleBasedPermission(permissions.BasePermission):
-    def __init__(self, allowed_roles):
-        self.allowed_roles = allowed_roles
+    # Define allowed_roles as a class attribute
+    allowed_roles = ['Admin']
 
     def has_permission(self, request, view):
         # Check if the user is authenticated
@@ -21,6 +21,3 @@ class RoleBasedPermission(permissions.BasePermission):
         else:
             logger.info(f"User {request.user.email} with role {user_role} granted access to endpoint")
         return has_permission
-
-def role_based_permission(allowed_roles):
-    return RoleBasedPermission(allowed_roles)

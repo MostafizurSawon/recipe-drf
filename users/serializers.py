@@ -2,6 +2,7 @@ import logging
 from rest_framework import serializers
 from .models import User, UserProfile, RoleChangeRequest
 
+
 # Define logger
 logger = logging.getLogger(__name__)
 
@@ -106,4 +107,12 @@ class RoleChangeRequestSerializer(serializers.ModelSerializer):
     def validate_requested_role(self, value):
         if value == 'User':
             raise serializers.ValidationError("You are already a User. Please request a different role.")
+        return value
+    
+class RoleUpdateSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=User.ROLE_CHOICES)
+
+    def validate_role(self, value):
+        if value not in dict(User.ROLE_CHOICES):
+            raise serializers.ValidationError("Invalid role. Must be Admin, Chef, or User.")
         return value

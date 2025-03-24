@@ -12,7 +12,7 @@ from django.db.models import Q, Count, OuterRef, Subquery
 import logging
 from . import models
 from . import serializers
-from .permissions import role_based_permission
+from users.permissions import role_based_permission, RoleBasedPermission 
 from users.models import User, UserProfile
 
 logger = logging.getLogger(__name__)
@@ -319,6 +319,10 @@ class ReactionViewSet(viewsets.ModelViewSet):
             )
         return super().destroy(request, *args, **kwargs)
 
+
+
+
+
 class RecipesByUserView(APIView):
     permission_classes = [IsAuthenticated, role_based_permission(allowed_roles=['Admin'])]
     pagination_class = RecipePagination
@@ -338,7 +342,15 @@ class RecipesByUserView(APIView):
                 "data": serializer.data,
             })
         except User.DoesNotExist:
+            logger.warning(f"User with email {email} not found")
             return Response(
                 {"status": "failed", "message": "User not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        except Exception as e:
+            logger.error(f"Error in RecipesByUserView for email {email}: {str(e)}", exc_info=True)
+            return Response(
+                {"status": "error", "message": "Internal Server Error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+

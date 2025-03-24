@@ -4,7 +4,7 @@ from .views import (
     UserRegistrationView, UserLoginView, SendOTPView,
     VerifyOTPView, ResetPasswordView, UserProfileView, 
     UserProfileUpdateView, ValidatePasswordView,
-    RoleChangeRequestView, AllUsersView, SpecificUserProfileView
+    RoleChangeRequestView, AllUsersView, SpecificUserProfileView, UpdateUserRoleView
 )
 
 urlpatterns = [
@@ -26,4 +26,5 @@ urlpatterns = [
     # Admin user management
     path('profile/all/', AllUsersView.as_view(), name='all_users'),  # Get all users (admin only)
     path('profile/<str:email>/', SpecificUserProfileView.as_view(), name='specific_user_profile'),  # Get a specific user's profile (admin only)
+    path('profile/<str:email>/update-role/', UpdateUserRoleView.as_view(), name='update_user_role'),
 ]
