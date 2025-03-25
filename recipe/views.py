@@ -12,7 +12,7 @@ from django.db.models import Q, Count, OuterRef, Subquery
 import logging
 from . import models
 from . import serializers
-from users.permissions import role_based_permission, RoleBasedPermission 
+from users.permissions import role_based_permission, role_based_permission_class 
 from users.models import User, UserProfile
 
 logger = logging.getLogger(__name__)
@@ -213,16 +213,22 @@ class ReviewViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
         elif self.action in ['update', 'partial_update', 'destroy']:
             return [IsAuthenticated()]
+        elif self.action in ['list', 'retrieve']:  # Explicitly set for GET requests
+            return [IsAuthenticatedOrReadOnly()]
         return [IsAuthenticatedOrReadOnly()]
 
     def perform_create(self, serializer):
-        recipe_id = self.request.data.get('recipe')
-        recipe = get_object_or_404(models.Recipe, id=recipe_id)
-        existing_review = models.Review.objects.filter(reviewer=self.request.user, recipe=recipe).first()
-        if existing_review:
-            raise ValidationError("You have already reviewed this recipe. You can edit your existing review.")
-        logger.info(f"Creating review for user: {self.request.user}")
-        serializer.save(reviewer=self.request.user, recipe=recipe)
+        try:
+            recipe_id = self.request.data.get('recipe')
+            recipe = get_object_or_404(models.Recipe, id=recipe_id)
+            existing_review = models.Review.objects.filter(reviewer=self.request.user, recipe=recipe).first()
+            if existing_review:
+                raise ValidationError("You have already reviewed this recipe. You can edit your existing review.")
+            logger.info(f"Creating review for user: {self.request.user}")
+            serializer.save(reviewer=self.request.user, recipe=recipe)
+        except Exception as e:
+            logger.error(f"Error creating review: {str(e)}", exc_info=True)
+            raise serializers.ValidationError(f"Failed to create review: {str(e)}")
 
     def update(self, request, *args, **kwargs):
         review = self.get_object()
@@ -254,6 +260,8 @@ class CommentViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
         elif self.action == 'destroy':
             return [IsAuthenticated()]
+        elif self.action in ['list', 'retrieve']:  # Explicitly set for GET requests
+            return [IsAuthenticatedOrReadOnly()]
         return [IsAuthenticatedOrReadOnly()]
 
     def get_queryset(self):
@@ -264,13 +272,17 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_create(self, serializer):
-        recipe_pk = self.kwargs.get('recipe_pk')
-        logger.info(f"Creating comment for recipe {recipe_pk}, request data: {self.request.data}")
-        if not recipe_pk:
-            raise serializers.ValidationError("Recipe ID is required and must be provided in the URL.")
-        recipe = get_object_or_404(models.Recipe, id=recipe_pk)
-        comment = serializer.save(user=self.request.user, recipe=recipe)
-        logger.info(f"Comment created: {comment.id} for recipe {recipe.id}")
+        try:
+            recipe_pk = self.kwargs.get('recipe_pk')
+            logger.info(f"Creating comment for recipe {recipe_pk}, request data: {self.request.data}")
+            if not recipe_pk:
+                raise serializers.ValidationError("Recipe ID is required and must be provided in the URL.")
+            recipe = get_object_or_404(models.Recipe, id=recipe_pk)
+            comment = serializer.save(user=self.request.user, recipe=recipe)
+            logger.info(f"Comment created: {comment.id} for recipe {recipe.id}")
+        except Exception as e:
+            logger.error(f"Error creating comment: {str(e)}", exc_info=True)
+            raise serializers.ValidationError(f"Failed to create comment: {str(e)}")
 
     def destroy(self, request, *args, **kwargs):
         comment = self.get_object()
@@ -324,7 +336,7 @@ class ReactionViewSet(viewsets.ModelViewSet):
 
 
 class RecipesByUserView(APIView):
-    permission_classes = [IsAuthenticated, role_based_permission(allowed_roles=['Admin'])]
+    permission_classes = [IsAuthenticated, role_based_permission_class(allowed_roles=['Admin'])]
     pagination_class = RecipePagination
 
     def get(self, request, email):

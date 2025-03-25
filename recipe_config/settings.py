@@ -183,6 +183,9 @@ REST_FRAMEWORK = {
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    # "DEFAULT_PERMISSION_CLASSES": (
+    #     "rest_framework.permissions.IsAuthenticatedOrReadOnly",
+    # ),
 }
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

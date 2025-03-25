@@ -13,9 +13,8 @@ from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, UserFullSerializer,
     RoleChangeRequestSerializer , RoleUpdateSerializer 
 )
-from .permissions import role_based_permission
+from .permissions import role_based_permission_class
 from .models import RoleChangeRequest 
-from .permissions import role_based_permission
 
 # Ensure logger is defined
 logger = logging.getLogger(__name__)
@@ -246,7 +245,7 @@ class UserProfileUpdateView(APIView):
         )
 
 class AllUsersView(APIView):
-    permission_classes = [permissions.IsAuthenticated, role_based_permission(allowed_roles=['Admin'])]
+    permission_classes = [permissions.IsAuthenticated, role_based_permission_class(allowed_roles=['Admin'])]
 
     def get(self, request):
         users = User.objects.all()
@@ -343,7 +342,7 @@ class RoleChangeRequestView(APIView):
         )
         
 class UpdateUserRoleView(APIView):
-    permission_classes = [permissions.IsAuthenticated, role_based_permission(allowed_roles=['Admin'])]
+    permission_classes = [permissions.IsAuthenticated, role_based_permission_class(allowed_roles=['Admin'])]
 
     def put(self, request, email):
         try:
