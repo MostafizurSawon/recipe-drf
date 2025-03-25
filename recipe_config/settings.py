@@ -233,8 +233,9 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOWED_ORIGINS = [
-    "https://recipe-hubb.netlify.app",  # Allow your React/Vue frontend
-    "http://localhost:5173",  # Include localhost if you are developing locally
+    "https://recipe-hubb.netlify.app",  
+    "http://localhost:5173",  
+    "https://recipe-drf.onrender.com",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = False  # Ensure this is set to False if using CORS_ALLOWED_ORIGINS
