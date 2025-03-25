@@ -26,7 +26,7 @@ schema_view = get_schema_view(
 api_urlpatterns = [
     path("accounts/", include("users.urls")),
     path("recipes/", include("recipe.urls")),
-    path('contact/', ContactUsAPIView.as_view(), name='contact-us'),
+    path('contact/', include('contact_us.urls')),
 ]
 
 # v1_urlpatterns = [

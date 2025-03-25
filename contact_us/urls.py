@@ -1,10 +1,7 @@
-# from rest_framework.routers import DefaultRouter
-# from django.urls import path, include
-# from . import views
+from django.urls import path
+from .views import ContactUsAPIView, ContactUsListAPIView
 
-# router = DefaultRouter() 
-
-# router.register('', views.ContactUsAPIView) 
-# urlpatterns = [
-#     path('', include(router.urls)),
-# ]
+urlpatterns = [
+    path('', ContactUsAPIView.as_view(), name='contact-us'),  # POST to create a message
+    path('messages/', ContactUsListAPIView.as_view(), name='contact-us-messages'),  # GET to list messages
+]
