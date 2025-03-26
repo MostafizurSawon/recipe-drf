@@ -6,7 +6,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'email', 'firstName', 'lastName', 'role']
-        ref_name = 'RecipeUserSerializer'  # Added unique ref_name
+        ref_name = 'RecipeUserSerializer'  
 
 class CommentSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)

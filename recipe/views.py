@@ -76,6 +76,9 @@ class RecipeViewSet(viewsets.ModelViewSet):
         # Filter by the authenticated user if 'my_recipes' query parameter is present
         if self.request.query_params.get('my_recipes') == 'true' and self.request.user.is_authenticated:
             queryset = queryset.filter(user=self.request.user)
+        # Filter by saved recipes if 'saved_recipes' query parameter is present
+        elif self.request.query_params.get('saved_recipes') == 'true' and self.request.user.is_authenticated:
+            queryset = queryset.filter(saved_by=self.request.user)
         return queryset
 
     def list(self, request, *args, **kwargs):
@@ -150,12 +153,13 @@ class RecipeViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticatedOrReadOnly])
     def most_liked(self, request):
         reaction_count = models.Reaction.objects.filter(
-            recipe=OuterRef('pk'),
-            reaction_type='LIKE'
+            recipe=OuterRef('pk')
         ).values('recipe').annotate(count=Count('id')).values('count')
+        
         recipes = models.Recipe.objects.annotate(
-            like_count=Subquery(reaction_count[:1])
-        ).order_by('-like_count')[:5]
+            total_reactions=Subquery(reaction_count[:1])
+        ).order_by('-total_reactions')[:5]
+        
         serializer = self.get_serializer(recipes, many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -194,12 +198,20 @@ class RecipeViewSet(viewsets.ModelViewSet):
         user = request.user
         if user in recipe.saved_by.all():
             recipe.saved_by.remove(user)
-            logger.info(f"User {user} unsaved recipe {recipe.id}")
-            return Response({'status': 'recipe unsaved'})
+            logger.info(f"User {user.email} unsaved recipe {recipe.id}")
+            return Response({
+                'status': 'recipe unsaved',
+                'is_saved_by_user': False,
+                'saved_by_count': recipe.saved_by.count()
+            })
         else:
             recipe.saved_by.add(user)
-            logger.info(f"User {user} saved recipe {recipe.id}")
-            return Response({'status': 'recipe saved'})
+            logger.info(f"User {user.email} saved recipe {recipe.id}")
+            return Response({
+                'status': 'recipe saved',
+                'is_saved_by_user': True,
+                'saved_by_count': recipe.saved_by.count()
+            })
 
 class ReviewViewSet(viewsets.ModelViewSet):
     queryset = models.Review.objects.all()

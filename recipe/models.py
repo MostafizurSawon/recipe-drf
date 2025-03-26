@@ -29,14 +29,17 @@ class Recipe(models.Model):
     def __str__(self):
         return f"{self.title} of Mr. {self.user.firstName} {self.user.lastName}"
 
+        
     def get_reaction_counts(self):
         reactions = Reaction.objects.filter(recipe=self)
-        return {
+        counts = {
             'LIKE': reactions.filter(reaction_type='LIKE').count(),
             'WOW': reactions.filter(reaction_type='WOW').count(),
             'SAD': reactions.filter(reaction_type='SAD').count(),
             'LOVE': reactions.filter(reaction_type='LOVE').count(),
         }
+        counts['total'] = sum(counts.values()) 
+        return counts
 
 class Reaction(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

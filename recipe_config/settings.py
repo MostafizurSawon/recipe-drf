@@ -236,12 +236,37 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOWED_ORIGINS = [
-    "https://recipe-hubb.netlify.app",  
-    "http://localhost:5173",  
+    "https://recipe-hubb.netlify.app",
+    "http://localhost:5173",
     "https://recipe-drf.onrender.com",
 ]
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+]
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "authorization",
+    "content-type",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "token",
+]
 
-CORS_ALLOW_ALL_ORIGINS = False  # Ensure this is set to False if using CORS_ALLOWED_ORIGINS
+# Add CSRF_TRUSTED_ORIGINS
+CSRF_TRUSTED_ORIGINS = [
+    "https://recipe-hubb.netlify.app",
+    "http://localhost:5173",
+    "https://recipe-drf.onrender.com",
+]
 
 
 LOGGING = {
