@@ -1,3 +1,4 @@
+# users/views.py (Full Code)
 import random
 import logging
 from django.contrib.auth import authenticate, get_user_model
@@ -11,14 +12,17 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, UserFullSerializer,
-    RoleChangeRequestSerializer , RoleUpdateSerializer 
+    RoleChangeRequestSerializer, RoleUpdateSerializer
 )
 from .permissions import role_based_permission_class
-from .models import RoleChangeRequest 
+from .models import RoleChangeRequest
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes
+from django.utils import timezone
+from datetime import timedelta
 
-# Ensure logger is defined
 logger = logging.getLogger(__name__)
-
 User = get_user_model()
 
 class UserRegistrationView(APIView):
@@ -27,15 +31,20 @@ class UserRegistrationView(APIView):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            user.last_verification_sent = timezone.now()  # Set initial timestamp
+            user.save()
             logger.info(f"User registered with email {user.email} and role {user.role}")
             return Response(
-                {"status": "success", "message": "User Registration Successfully"},
+                {
+                    "status": "success",
+                    "message": "User Registration Successful. Please check your email to verify your account."
+                },
                 status=status.HTTP_201_CREATED,
             )
         else:
             logger.error(f"User registration failed: {serializer.errors}")
             return Response(
-                {"status": "Error", "message": "User Registration failed!"},
+                {"status": "Error", "message": "User Registration failed!", "errors": serializer.errors},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -53,20 +62,25 @@ class UserLoginView(APIView):
 
         user = authenticate(request, email=email, password=password)
 
-        if user:
-            refresh = RefreshToken.for_user(user)
+        if not user:
             return Response(
-                {
-                    "status": "success",
-                    "message": "User Login Successful",
-                    "token": str(refresh.access_token),
-                },
-                status=status.HTTP_200_OK,
+                {"status": "unauthorized", "message": "Invalid Credentials"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        if not user.is_verified:
+            return Response(
+                {"status": "unverified", "message": "Please verify your email before logging in."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
+        refresh = RefreshToken.for_user(user)
         return Response(
-            {"status": "unauthorized", "message": "Invalid Credentials"},
-            status=status.HTTP_401_UNAUTHORIZED,
+            {
+                "status": "success",
+                "message": "User Login Successful",
+                "token": str(refresh.access_token),
+            },
+            status=status.HTTP_200_OK,
         )
 
 class SendOTPView(APIView):
@@ -95,7 +109,7 @@ class SendOTPView(APIView):
             from_email="X-Bakery OTP<otpxbakery@example.com>",
             recipient_list=[email],
         )
-
+        logger.info(f"OTP {otp} sent to {email}")
         return Response(
             {"status": "success", "message": "OTP Sent Successfully"},
             status=status.HTTP_200_OK,
@@ -165,27 +179,98 @@ class ResetPasswordView(APIView):
             status=status.HTTP_200_OK,
         )
 
-class UserProfileView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+class ActivateEmailView(APIView):
+    def get(self, request, uidb64, token):
+        try:
+            uid = urlsafe_base64_decode(uidb64).decode()
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            user = None
 
-    @swagger_auto_schema(
-        operation_description="Retrieve the authenticated user's profile.",
-        responses={
-            200: openapi.Response('User profile', UserFullSerializer),
-            401: 'Unauthorized',
+        if user is not None and default_token_generator.check_token(user, token):
+            if user.is_verified:
+                return Response(
+                    {"status": "success", "message": "Email already verified"},
+                    status=status.HTTP_200_OK,
+                )
+            user.is_verified = True
+            user.save()
+            logger.info(f"Email verified for {user.email}")
+            return Response(
+                {"status": "success", "message": "Email verified successfully. You can now log in."},
+                status=status.HTTP_200_OK,
+            )
+        else:
+            logger.error(f"Invalid activation link for uidb64={uidb64}, token={token}")
+            return Response(
+                {"status": "failed", "message": "Invalid or expired activation link"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+class ResendVerificationView(APIView):
+    COOLDOWN_MINUTES = 5  # 5-minute cooldown
+
+    @swagger_auto_schema(request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'email': openapi.Schema(type=openapi.TYPE_STRING, description='Email'),
         }
-    )
-    def get(self, request):
-        user = request.user
-        serializer = UserFullSerializer(user)
-        return Response(
-            {
-                "status": "success",
-                "message": "Request Successful",
-                "data": serializer.data,
-            },
-            status=status.HTTP_200_OK,
-        )
+    ))
+    def post(self, request):
+        email = request.data.get("email")
+        if not email:
+            return Response(
+                {"status": "failed", "message": "Email is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(email=email)
+            if user.is_verified:
+                return Response(
+                    {"status": "failed", "message": "Email is already verified"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Check cooldown
+            if user.last_verification_sent:
+                time_since_last = timezone.now() - user.last_verification_sent
+                cooldown_seconds = self.COOLDOWN_MINUTES * 60
+                if time_since_last.total_seconds() < cooldown_seconds:
+                    remaining = int(cooldown_seconds - time_since_last.total_seconds())
+                    return Response(
+                        {
+                            "status": "cooldown",
+                            "message": f"Please wait {remaining} seconds before resending.",
+                            "remaining": remaining
+                        },
+                        status=status.HTTP_429_TOO_MANY_REQUESTS,
+                    )
+
+            # Generate new token and send email
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            confirm_link = f"https://recipe-drf.onrender.com/users/activate/{uid}/{token}/"
+            # confirm_link = f"http://127.0.0.1:8000/users/activate/{uid}/{token}/"
+            send_mail(
+                subject="Verify Your Email",
+                message=f"Please click this link to verify your email: {confirm_link}",
+                from_email="Recipe Hub <no-reply@recipehub.com>",
+                recipient_list=[user.email],
+            )
+            user.last_verification_sent = timezone.now()
+            user.save()
+            logger.info(f"Verification email resent to {user.email}")
+            return Response(
+                {"status": "success", "message": "Verification email resent successfully"},
+                status=status.HTTP_200_OK,
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"status": "failed", "message": "User with this email does not exist"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
 
 class UserProfileUpdateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -202,9 +287,7 @@ class UserProfileUpdateView(APIView):
     def put(self, request):
         user = request.user
 
-        # Handle both JSON and FormData
         if "multipart/form-data" in request.headers.get("Content-Type", "").lower():
-            # Parse FormData into a nested dictionary
             data = {}
             profile_data = {}
             for key, value in request.data.items():
@@ -216,10 +299,8 @@ class UserProfileUpdateView(APIView):
             if profile_data:
                 data["profile"] = profile_data
         else:
-            # JSON data, use as-is
             data = request.data
 
-        # Debug: Log the parsed data
         logger.debug(f"Data to update: {data}")
 
         serializer = UserFullSerializer(user, data=data, partial=True)
@@ -260,7 +341,7 @@ class AllUsersView(APIView):
         )
 
 class SpecificUserProfileView(APIView):
-    permission_classes = [permissions.IsAuthenticated]  # Removed admin restriction
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, email):
         try:
@@ -317,7 +398,6 @@ class RoleChangeRequestView(APIView):
     @swagger_auto_schema(request_body=RoleChangeRequestSerializer)
     def post(self, request):
         user = request.user
-        # Check if the user already has a pending request
         if RoleChangeRequest.objects.filter(user=user, status='Pending').exists():
             return Response(
                 {"status": "failed", "message": "You already have a pending role change request."},
@@ -339,6 +419,28 @@ class RoleChangeRequestView(APIView):
         return Response(
             {"status": "failed", "message": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
+        )
+        
+class UserProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Retrieve the authenticated user's profile.",
+        responses={
+            200: openapi.Response('User profile', UserFullSerializer),
+            401: 'Unauthorized',
+        }
+    )
+    def get(self, request):
+        user = request.user
+        serializer = UserFullSerializer(user)
+        return Response(
+            {
+                "status": "success",
+                "message": "Request Successful",
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
         )
         
 class UpdateUserRoleView(APIView):
