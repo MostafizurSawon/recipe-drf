@@ -179,6 +179,9 @@ class ResetPasswordView(APIView):
             status=status.HTTP_200_OK,
         )
 
+from django.conf import settings
+from django.http import HttpResponseRedirect
+
 class ActivateEmailView(APIView):
     def get(self, request, uidb64, token):
         try:
@@ -189,23 +192,15 @@ class ActivateEmailView(APIView):
 
         if user is not None and default_token_generator.check_token(user, token):
             if user.is_verified:
-                return Response(
-                    {"status": "success", "message": "Email already verified"},
-                    status=status.HTTP_200_OK,
-                )
+                logger.info(f"Email already verified for {user.email}")
+                return HttpResponseRedirect(f"{settings.FRONTEND_URL}/login?verified=already")
             user.is_verified = True
             user.save()
             logger.info(f"Email verified for {user.email}")
-            return Response(
-                {"status": "success", "message": "Email verified successfully. You can now log in."},
-                status=status.HTTP_200_OK,
-            )
+            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/login?verified=true")
         else:
             logger.error(f"Invalid activation link for uidb64={uidb64}, token={token}")
-            return Response(
-                {"status": "failed", "message": "Invalid or expired activation link"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/login?verified=failed")
 
 class ResendVerificationView(APIView):
     COOLDOWN_MINUTES = 5  # 5-minute cooldown
@@ -250,7 +245,7 @@ class ResendVerificationView(APIView):
             # Generate new token and send email
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
-            confirm_link = f"https://recipe-drf.onrender.com/users/activate/{uid}/{token}/"
+            confirm_link = f"https://recipe-drf.onrender.com/accounts/activate/{uid}/{token}/"
             # confirm_link = f"http://127.0.0.1:8000/users/activate/{uid}/{token}/"
             send_mail(
                 subject="Verify Your Email",

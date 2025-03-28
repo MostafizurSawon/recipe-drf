@@ -56,7 +56,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         # Send email verification
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        confirm_link = f"https://recipe-drf.onrender.com/users/activate/{uid}/{token}/"  
+        confirm_link = f"https://recipe-drf.onrender.com/accounts/activate/{uid}/{token}/"  
         # confirm_link = f"http://127.0.0.1:8000/users/activate/{uid}/{token}/"  
         
         send_mail(

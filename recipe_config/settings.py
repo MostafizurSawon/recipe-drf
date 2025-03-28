@@ -198,7 +198,7 @@ EMAIL_PORT = 587
 EMAIL_HOST_USER = env("EMAIL")
 EMAIL_HOST_PASSWORD = env("EMAIL_PASSWORD")
 
-
+FRONTEND_URL = "https://recipe-hubb.netlify.app"
 
 # Simple JWT Configuration
 from datetime import timedelta
