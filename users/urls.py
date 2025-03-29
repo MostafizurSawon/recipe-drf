@@ -4,10 +4,11 @@ from .views import (
     VerifyOTPView, ResetPasswordView, UserProfileView, 
     UserProfileUpdateView, ValidatePasswordView,
     RoleChangeRequestView, AllUsersView, SpecificUserProfileView, 
-    UpdateUserRoleView, ActivateEmailView, ResendVerificationView
+    UpdateUserRoleView, ActivateEmailView, ResendVerificationView, AccountsRootView
 )
 
 urlpatterns = [
+    path('', AccountsRootView.as_view(), name='accounts_root'),
     path('register/', UserRegistrationView.as_view(), name='register'),
     path('login/', UserLoginView.as_view(), name='login'),
     path('activate/<str:uidb64>/<str:token>/', ActivateEmailView.as_view(), name='activate'),

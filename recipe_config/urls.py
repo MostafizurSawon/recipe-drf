@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.views.generic.base import RedirectView
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
@@ -51,10 +51,13 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('db', download_database, name='download-database'),
     path("", include(api_urlpatterns)),
+    # re_path(r'^accounts/.*$', RedirectView.as_view(url='/swagger/', permanent=False)),
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    
+handler404 = 'recipe_config.views.custom_accounts'
 
 
 # urlpatterns = [

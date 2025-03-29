@@ -1,4 +1,3 @@
-# users/views.py
 import random
 import logging
 from django.conf import settings
@@ -23,6 +22,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
 from django.utils import timezone
 from datetime import timedelta
+from django.urls import reverse
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -491,3 +491,27 @@ class UpdateUserRoleView(APIView):
             {"status": "success", "message": f"User role updated to {new_role} successfully"},
             status=status.HTTP_200_OK,
         )
+        
+
+# api view
+
+class AccountsRootView(APIView):
+    def get(self, request, *args, **kwargs):
+        # List of endpoints under 'accounts/'
+        endpoints = {
+            "register": request.build_absolute_uri(reverse("register")),
+            "login": request.build_absolute_uri(reverse("login")),
+            "activate": request.build_absolute_uri("accounts/activate/<str:uidb64>/<str:token>/"),
+            "resend-verification": request.build_absolute_uri(reverse("resend_verification")),
+            "send-otp": request.build_absolute_uri(reverse("send_otp")),
+            "verify-otp": request.build_absolute_uri(reverse("verify_otp")),
+            "reset-password": request.build_absolute_uri(reverse("reset_password")),
+            "validate-password": request.build_absolute_uri(reverse("validate_password")),
+            "profile": request.build_absolute_uri(reverse("profile")),
+            "profile-update": request.build_absolute_uri(reverse("profile_update")),
+            "role-change-request": request.build_absolute_uri(reverse("request_role_change")),
+            "all-users": request.build_absolute_uri(reverse("all_users")),
+            "specific-user-profile": request.build_absolute_uri("accounts/profile/<str:email>/"),
+            "update-user-role": request.build_absolute_uri("accounts/profile/<str:email>/update-role/"),
+        }
+        return Response(endpoints)
