@@ -1,8 +1,10 @@
-# users/views.py (Full Code)
+# users/views.py
 import random
 import logging
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core.mail import send_mail
+from django.http import HttpResponseRedirect
 from rest_framework import permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -98,22 +100,29 @@ class SendOTPView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        otp = str(random.randint(1000, 9999))
-        user = User.objects.get(email=email)
-        user.otp = otp
-        user.save()
+        try:
+            otp = str(random.randint(1000, 9999))
+            user = User.objects.get(email=email)
+            user.otp = otp
+            user.save()
 
-        send_mail(
-            subject="OTP for Password Reset",
-            message=f"Your OTP is {otp}",
-            from_email="X-Bakery OTP<otpxbakery@example.com>",
-            recipient_list=[email],
-        )
-        logger.info(f"OTP {otp} sent to {email}")
-        return Response(
-            {"status": "success", "message": "OTP Sent Successfully"},
-            status=status.HTTP_200_OK,
-        )
+            send_mail(
+                subject="OTP for Password Reset",
+                message=f"Your OTP is {otp}",
+                from_email=settings.EMAIL_HOST_USER,  # Use the configured email
+                recipient_list=[email],
+            )
+            logger.info(f"OTP {otp} sent to {email}")
+            return Response(
+                {"status": "success", "message": "OTP Sent Successfully"},
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.error(f"Failed to send OTP to {email}: {str(e)}")
+            return Response(
+                {"status": "error", "message": "Failed to send OTP. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 class VerifyOTPView(APIView):
     @swagger_auto_schema(request_body=openapi.Schema(
@@ -171,6 +180,13 @@ class ResetPasswordView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Add password validation to match UserFullSerializer
+        if not any(char.isdigit() for char in password):
+            return Response(
+                {"status": "failed", "message": "Password must contain at least one digit"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         user = request.user
         user.set_password(password)
         user.save()
@@ -178,9 +194,6 @@ class ResetPasswordView(APIView):
             {"status": "success", "message": "Password Reset Successfully"},
             status=status.HTTP_200_OK,
         )
-
-from django.conf import settings
-from django.http import HttpResponseRedirect
 
 class ActivateEmailView(APIView):
     def get(self, request, uidb64, token):
@@ -247,25 +260,31 @@ class ResendVerificationView(APIView):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             confirm_link = f"https://recipe-drf.onrender.com/accounts/activate/{uid}/{token}/"
             # confirm_link = f"http://127.0.0.1:8000/users/activate/{uid}/{token}/"
-            send_mail(
-                subject="Verify Your Email",
-                message=f"Please click this link to verify your email: {confirm_link}",
-                from_email="Recipe Hub <no-reply@recipehub.com>",
-                recipient_list=[user.email],
-            )
-            user.last_verification_sent = timezone.now()
-            user.save()
-            logger.info(f"Verification email resent to {user.email}")
-            return Response(
-                {"status": "success", "message": "Verification email resent successfully"},
-                status=status.HTTP_200_OK,
-            )
+            try:
+                send_mail(
+                    subject="Verify Your Email",
+                    message=f"Please click this link to verify your email: {confirm_link}",
+                    from_email=settings.EMAIL_HOST_USER,  # Use the configured email
+                    recipient_list=[user.email],
+                )
+                user.last_verification_sent = timezone.now()
+                user.save()
+                logger.info(f"Verification email resent to {user.email}")
+                return Response(
+                    {"status": "success", "message": "Verification email resent successfully"},
+                    status=status.HTTP_200_OK,
+                )
+            except Exception as e:
+                logger.error(f"Failed to resend verification email to {user.email}: {str(e)}")
+                return Response(
+                    {"status": "error", "message": "Failed to resend verification email. Please try again later."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
         except User.DoesNotExist:
             return Response(
                 {"status": "failed", "message": "User with this email does not exist"},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
 
 class UserProfileUpdateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -415,7 +434,7 @@ class RoleChangeRequestView(APIView):
             {"status": "failed", "message": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
         )
-        
+
 class UserProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -437,7 +456,7 @@ class UserProfileView(APIView):
             },
             status=status.HTTP_200_OK,
         )
-        
+
 class UpdateUserRoleView(APIView):
     permission_classes = [permissions.IsAuthenticated, role_based_permission_class(allowed_roles=['Admin'])]
 

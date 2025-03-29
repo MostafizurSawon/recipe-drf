@@ -1,4 +1,3 @@
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics
@@ -7,7 +6,7 @@ from .models import ContactUs
 from .serializers import ContactUsSerializer
 from users.permissions import role_based_permission_class
 
-# API to create a new contact message (accessible to all)
+
 class ContactUsAPIView(APIView):
     def post(self, request):
         serializer = ContactUsSerializer(data=request.data)

@@ -71,15 +71,15 @@ class Reaction(models.Model):
 class Review(models.Model):
     reviewer = models.ForeignKey(User, on_delete=models.CASCADE)
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE)
-    body = models.TextField(blank=True)  # Already optional
+    body = models.TextField(blank=True)  
     created = models.DateTimeField(auto_now_add=True)
-    rating = models.IntegerField(choices=[(i, str(i)) for i in range(1, 6)])  # 1 to 5
+    rating = models.IntegerField(choices=[(i, str(i)) for i in range(1, 6)])  
 
     class Meta:
         unique_together = ('reviewer', 'recipe')
 
     def clean(self):
-        # Skip the duplicate check since it's handled in the view
+        # Skip the duplicate check since it's already handled in the view :)
         pass
 
     def save(self, *args, **kwargs):

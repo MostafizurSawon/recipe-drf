@@ -1,4 +1,3 @@
-# users/permissions.py
 from rest_framework import permissions
 import logging
 
@@ -26,7 +25,7 @@ class RoleBasedPermission(permissions.BasePermission):
                        f"granted access to endpoint")
         return has_permission
 
-# For views using get_permissions (e.g., CommentViewSet, ReviewViewSet)
+
 def role_based_permission(allowed_roles):
     return RoleBasedPermission(allowed_roles=allowed_roles)  # Return an instance
 
@@ -35,4 +34,4 @@ def role_based_permission_class(allowed_roles):
     class RoleBasedPermissionWithRoles(RoleBasedPermission):
         def __init__(self):
             super().__init__(allowed_roles=allowed_roles)
-    return RoleBasedPermissionWithRoles  # Return the class
+    return RoleBasedPermissionWithRoles  

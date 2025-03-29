@@ -264,7 +264,6 @@ CORS_ALLOW_HEADERS = [
     "token",
 ]
 
-# Add CSRF_TRUSTED_ORIGINS
 CSRF_TRUSTED_ORIGINS = [
     "https://recipe-hubb.netlify.app",
     "http://localhost:5173",
@@ -285,9 +284,9 @@ LOGGING = {
             'handlers': ['console'],
             'level': 'INFO',
         },
-        'users': {  # Add a logger for the users app
+        'users': {  # Added a logger for the users app
             'handlers': ['console'],
-            'level': 'DEBUG',  # Set to DEBUG to capture more details
+            'level': 'DEBUG',  # DEBUG implemented for more details
             'propagate': False,
         },
     },

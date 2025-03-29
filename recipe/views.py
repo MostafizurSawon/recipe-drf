@@ -272,7 +272,7 @@ class CommentViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
         elif self.action == 'destroy':
             return [IsAuthenticated()]
-        elif self.action in ['list', 'retrieve']:  # Explicitly set for GET requests
+        elif self.action in ['list', 'retrieve']:  =
             return [IsAuthenticatedOrReadOnly()]
         return [IsAuthenticatedOrReadOnly()]
 
@@ -342,9 +342,6 @@ class ReactionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         return super().destroy(request, *args, **kwargs)
-
-
-
 
 
 class RecipesByUserView(APIView):

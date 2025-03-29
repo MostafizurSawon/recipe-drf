@@ -1,4 +1,3 @@
-# users/models.py (Full Code)
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
@@ -49,7 +48,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
-    last_verification_sent = models.DateTimeField(null=True, blank=True)  # New field
+    last_verification_sent = models.DateTimeField(null=True, blank=True) 
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["firstName", "lastName"]

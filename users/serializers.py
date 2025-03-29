@@ -1,4 +1,3 @@
-
 import logging
 from rest_framework import serializers
 from .models import User, UserProfile, RoleChangeRequest
@@ -53,7 +52,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user.save()
         logger.info(f"User {user.email} saved successfully")
 
-        # Send email verification
+        # Email verification
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         confirm_link = f"https://recipe-drf.onrender.com/accounts/activate/{uid}/{token}/"  
