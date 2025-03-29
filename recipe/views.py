@@ -272,7 +272,7 @@ class CommentViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), role_based_permission(allowed_roles=['User', 'Chef', 'Admin'])]
         elif self.action == 'destroy':
             return [IsAuthenticated()]
-        elif self.action in ['list', 'retrieve']:  =
+        elif self.action in ['list', 'retrieve']:  
             return [IsAuthenticatedOrReadOnly()]
         return [IsAuthenticatedOrReadOnly()]
 
